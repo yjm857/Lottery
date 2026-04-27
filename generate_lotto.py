@@ -12,8 +12,9 @@ def generate_lotto_numbers(file_path):
         # Read the excel file
         df = pd.read_excel(file_path)
         
-        # Extract the main winning numbers (columns 2 to 7, which are indices 2:8)
-        numbers_df = df.iloc[:, 2:8]
+        # Extract the main winning numbers (recent 3 years = 156 weeks)
+        # Columns 2 to 7 are indices 2:8
+        numbers_df = df.iloc[:156, 2:8]
         
         # Get all numbers into a single list
         all_numbers = numbers_df.values.flatten().tolist()
@@ -58,15 +59,15 @@ if __name__ == "__main__":
     
     if selected is not None:
         print("\n================================================")
-        print("[ 과거 당첨 횟수(확률) 기반 로또 예상 번호 ]")
+        print("[ 최근 3년 당첨 횟수(확률) 기반 로또 예상 번호 ]")
         print("================================================")
         print(f"추천 번호: {', '.join(map(str, selected))}")
         print("================================================\n")
         
-        print("[ 역대 가장 많이 나온 번호 Top 5 ]")
+        print("[ 최근 3년 가장 많이 나온 번호 Top 5 ]")
         for num, count in counts.most_common(5):
             print(f" - {num}번: {count}회")
             
-        print("\n[ 역대 가장 적게 나온 번호 Bottom 5 ]")
+        print("\n[ 최근 3년 가장 적게 나온 번호 Bottom 5 ]")
         for num, count in counts.most_common()[-5:]:
             print(f" - {num}번: {count}회")
