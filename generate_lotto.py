@@ -7,14 +7,17 @@ import sys
 # 경고 메시지 숨기기 (openpyxl 관련)
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-def generate_lotto_numbers(file_path):
+def generate_lotto_numbers(file_path, years=3):
     try:
         # Read the excel file
         df = pd.read_excel(file_path)
         
-        # Extract the main winning numbers (recent 3 years = 156 weeks)
+        # Calculate number of weeks (1 year = 52 weeks)
+        weeks = years * 52
+        
+        # Extract the main winning numbers 
         # Columns 2 to 7 are indices 2:8
-        numbers_df = df.iloc[:156, 2:8]
+        numbers_df = df.iloc[:weeks, 2:8]
         
         # Get all numbers into a single list
         all_numbers = numbers_df.values.flatten().tolist()
@@ -52,22 +55,33 @@ def generate_lotto_numbers(file_path):
         print(f"Error processing the file: {e}")
         return None, None
 
-if __name__ == "__main__":
-    file_path = "c:\\Users\\yjm85\\Project\\Lottery\\Lottery_History.xlsx"
-    
-    selected, counts = generate_lotto_numbers(file_path)
-    
+def print_result(years, selected, counts):
     if selected is not None:
         print("\n================================================")
-        print("[ 최근 3년 당첨 횟수(확률) 기반 로또 예상 번호 ]")
+        print(f"[ 최근 {years}년 당첨 횟수(확률) 기반 로또 예상 번호 ]")
         print("================================================")
         print(f"추천 번호: {', '.join(map(str, selected))}")
         print("================================================\n")
         
-        print("[ 최근 3년 가장 많이 나온 번호 Top 5 ]")
+        print(f"[ 최근 {years}년 가장 많이 나온 번호 Top 5 ]")
         for num, count in counts.most_common(5):
             print(f" - {num}번: {count}회")
             
-        print("\n[ 최근 3년 가장 적게 나온 번호 Bottom 5 ]")
+        print(f"\n[ 최근 {years}년 가장 적게 나온 번호 Bottom 5 ]")
         for num, count in counts.most_common()[-5:]:
             print(f" - {num}번: {count}회")
+
+if __name__ == "__main__":
+    file_path = "c:\\Users\\yjm85\\Project\\Lottery\\Lottery_History.xlsx"
+    
+    # 1년 (52주)
+    selected_1y, counts_1y = generate_lotto_numbers(file_path, years=1)
+    print_result(1, selected_1y, counts_1y)
+    
+    # 2년 (104주)
+    selected_2y, counts_2y = generate_lotto_numbers(file_path, years=2)
+    print_result(2, selected_2y, counts_2y)
+    
+    # 3년 (156주)
+    selected_3y, counts_3y = generate_lotto_numbers(file_path, years=3)
+    print_result(3, selected_3y, counts_3y)
