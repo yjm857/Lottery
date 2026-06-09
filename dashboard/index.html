@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SDV 데이터 흐름 대시보드</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◎</span>
+    <div>
+      <h1>SDV 데이터 흐름 대시보드</h1>
+      <p class="subtitle">Software-Defined Vehicle · Cloud ↔ HPC ↔ Zonal ECU ↔ Edge ECU</p>
+    </div>
+  </div>
+  <div class="clock">
+    <span id="sim-clock">00:00.0</span>
+    <small>SIM TIME</small>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 좌측: 시나리오 제어판 -->
+  <aside class="panel controls">
+    <h2>시나리오</h2>
+    <p class="hint">차량에서 발생하는 이벤트를 선택하면 데이터 흐름이 토폴로지 위에서 실시간으로 재생됩니다.</p>
+
+    <button class="scenario-btn" data-scenario="ota">
+      <span class="ico">⬇</span>
+      <span class="txt">
+        <strong>OTA 소프트웨어 업데이트</strong>
+        <small>Cloud → HPC → Zonal → Edge ECU 배포</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn danger" data-scenario="crash">
+      <span class="ico">⚠</span>
+      <span class="txt">
+        <strong>충돌 이벤트 (Crash)</strong>
+        <small>Edge 센서 → Zonal → HPC → Cloud 긴급 업로드</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn" data-scenario="telemetry">
+      <span class="ico">📡</span>
+      <span class="txt">
+        <strong>정상 주행 텔레메트리</strong>
+        <small>주기적 센서 수집 및 클라우드 동기화</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn" data-scenario="diagnostics">
+      <span class="ico">🩺</span>
+      <span class="txt">
+        <strong>원격 진단 (Diagnostics)</strong>
+        <small>Cloud 요청 → HPC 수집 → 리포트 회신</small>
+      </span>
+    </button>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <label for="speed">재생 속도</label>
+      <input type="range" id="speed" min="0.3" max="3" step="0.1" value="1" />
+      <span id="speed-val">1.0x</span>
+    </div>
+
+    <div class="row toggles">
+      <label><input type="checkbox" id="autoloop" /> 자동 반복</label>
+      <label><input type="checkbox" id="labels" checked /> 패킷 라벨</label>
+    </div>
+
+    <button id="stop-btn" class="ghost-btn">■ 정지 / 초기화</button>
+
+    <div class="divider"></div>
+    <h3>범례</h3>
+    <ul class="legend">
+      <li><span class="dot type-update"></span> 펌웨어 / 업데이트</li>
+      <li><span class="dot type-event"></span> 이벤트 / 충돌 데이터</li>
+      <li><span class="dot type-telemetry"></span> 텔레메트리 / 센서</li>
+      <li><span class="dot type-control"></span> 제어 / 명령</li>
+      <li><span class="dot type-ack"></span> ACK / 확인</li>
+    </ul>
+  </aside>
+
+  <!-- 중앙: 토폴로지 -->
+  <section class="panel stage">
+    <svg id="topology" viewBox="0 0 900 620" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="cloudGlow" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- 링크/노드/패킷은 JS에서 렌더링 -->
+      <g id="links"></g>
+      <g id="packets"></g>
+      <g id="nodes"></g>
+    </svg>
+  </section>
+
+  <!-- 우측: 로그 + 지표 -->
+  <aside class="panel monitor">
+    <h2>실시간 지표</h2>
+    <div class="metrics">
+      <div class="metric">
+        <span class="m-val" id="m-packets">0</span>
+        <span class="m-label">전송 패킷</span>
+      </div>
+      <div class="metric">
+        <span class="m-val" id="m-throughput">0</span>
+        <span class="m-label">MB 전송</span>
+      </div>
+      <div class="metric">
+        <span class="m-val" id="m-latency">—</span>
+        <span class="m-label">평균 지연 ms</span>
+      </div>
+      <div class="metric">
+        <span class="m-val ok" id="m-status">대기</span>
+        <span class="m-label">상태</span>
+      </div>
+    </div>
+
+    <h2>이벤트 로그</h2>
+    <div id="log" class="log"></div>
+  </aside>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
