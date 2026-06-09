@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SDV 데이터 흐름 대시보드</title>
+<style>
+:root {
+  --bg: #0b1020;
+  --panel: #121933;
+  --panel-2: #0f1530;
+  --line: #25314f;
+  --text: #e6ecff;
+  --muted: #8b9bc7;
+  --accent: #3b82f6;
+  --update: #22d3ee;
+  --event: #f43f5e;
+  --telemetry: #a3e635;
+  --control: #f59e0b;
+  --ack: #94a3b8;
+  --ok: #34d399;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: radial-gradient(1200px 700px at 70% -10%, #16204a 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "Segoe UI", Roboto, "Noto Sans KR", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Top bar ---- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10,15,32,0.6);
+  backdrop-filter: blur(6px);
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.logo {
+  font-size: 30px; color: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+.topbar h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
+.subtitle { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.clock { text-align: right; }
+.clock #sim-clock { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.clock small { display: block; font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+
+/* ---- Layout ---- */
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+.panel {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  overflow: auto;
+}
+.panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 4px 0 12px; }
+.panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 4px 0 10px; }
+
+/* ---- Controls ---- */
+.controls .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: -6px; }
+.scenario-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  background: #182142; color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; margin-bottom: 10px; cursor: pointer; text-align: left;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.scenario-btn:hover { transform: translateY(-2px); border-color: var(--accent); background: #1d2750; }
+.scenario-btn.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,.35) inset; }
+.scenario-btn.danger:hover { border-color: var(--event); }
+.scenario-btn .ico { font-size: 20px; width: 26px; text-align: center; }
+.scenario-btn .txt strong { display: block; font-size: 13px; }
+.scenario-btn .txt small { color: var(--muted); font-size: 11px; }
+
+.divider { height: 1px; background: var(--line); margin: 16px 0; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+.row label { white-space: nowrap; }
+.row input[type=range] { flex: 1; accent-color: var(--accent); }
+.toggles { flex-wrap: wrap; gap: 14px; }
+.toggles label { color: var(--text); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+.ghost-btn {
+  width: 100%; background: transparent; color: var(--muted);
+  border: 1px dashed var(--line); border-radius: 10px; padding: 10px; cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.ghost-btn:hover { color: var(--event); border-color: var(--event); }
+
+.legend { list-style: none; padding: 0; margin: 0; font-size: 12px; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.type-update { background: var(--update); color: var(--update); }
+.type-event { background: var(--event); color: var(--event); }
+.type-telemetry { background: var(--telemetry); color: var(--telemetry); }
+.type-control { background: var(--control); color: var(--control); }
+.type-ack { background: var(--ack); color: var(--ack); }
+
+/* ---- Stage ---- */
+.stage { display: flex; padding: 8px; }
+#topology { width: 100%; height: 100%; }
+
+/* SVG node styling driven by classes */
+.node-box { stroke: var(--line); stroke-width: 1.5; }
+.node-cloud .node-box { fill: #14305c; stroke: var(--accent); }
+.node-hpc .node-box { fill: #2a1d52; stroke: #8b5cf6; }
+.node-zonal .node-box { fill: #163a34; stroke: #10b981; }
+.node-edge .node-box { fill: #2a2233; stroke: #64748b; }
+.node-title { fill: var(--text); font-size: 13px; font-weight: 600; text-anchor: middle; }
+.node-sub { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+.node-icon { font-size: 18px; text-anchor: middle; }
+.node.pulsing .node-box { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse {
+  0%,100% { stroke-width: 1.5; filter: none; }
+  50% { stroke-width: 3; filter: drop-shadow(0 0 6px currentColor); }
+}
+
+.link { stroke: var(--line); stroke-width: 2; fill: none; }
+.link.hot { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 0 4px var(--accent)); }
+
+.packet-label { font-size: 9px; fill: var(--text); text-anchor: middle; paint-order: stroke; stroke: #0b1020; stroke-width: 3; }
+
+/* ---- Monitor ---- */
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.metric {
+  background: #182142; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; text-align: center;
+}
+.m-val { display: block; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.m-val.ok { color: var(--ok); font-size: 16px; }
+.m-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+.log { font-size: 12px; line-height: 1.55; font-family: "SFMono-Regular", Consolas, monospace; }
+.log-entry { padding: 6px 8px; border-left: 3px solid var(--line); margin-bottom: 5px; background: #131b38; border-radius: 0 6px 6px 0; }
+.log-entry .t { color: var(--muted); margin-right: 6px; }
+.log-entry.update { border-color: var(--update); }
+.log-entry.event { border-color: var(--event); }
+.log-entry.telemetry { border-color: var(--telemetry); }
+.log-entry.control { border-color: var(--control); }
+.log-entry.ack { border-color: var(--ack); }
+.log-entry.system { border-color: var(--accent); color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+  .stage { min-height: 420px; }
+}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◎</span>
+    <div>
+      <h1>SDV 데이터 흐름 대시보드</h1>
+      <p class="subtitle">Software-Defined Vehicle · Cloud ↔ HPC ↔ Zonal ECU ↔ Edge ECU</p>
+    </div>
+  </div>
+  <div class="clock">
+    <span id="sim-clock">00:00.0</span>
+    <small>SIM TIME</small>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 좌측: 시나리오 제어판 -->
+  <aside class="panel controls">
+    <h2>시나리오</h2>
+    <p class="hint">차량에서 발생하는 이벤트를 선택하면 데이터 흐름이 토폴로지 위에서 실시간으로 재생됩니다.</p>
+
+    <button class="scenario-btn" data-scenario="ota">
+      <span class="ico">⬇</span>
+      <span class="txt">
+        <strong>OTA 소프트웨어 업데이트</strong>
+        <small>Cloud → HPC → Zonal → Edge ECU 배포</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn danger" data-scenario="crash">
+      <span class="ico">⚠</span>
+      <span class="txt">
+        <strong>충돌 이벤트 (Crash)</strong>
+        <small>Edge 센서 → Zonal → HPC → Cloud 긴급 업로드</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn" data-scenario="telemetry">
+      <span class="ico">📡</span>
+      <span class="txt">
+        <strong>정상 주행 텔레메트리</strong>
+        <small>주기적 센서 수집 및 클라우드 동기화</small>
+      </span>
+    </button>
+
+    <button class="scenario-btn" data-scenario="diagnostics">
+      <span class="ico">🩺</span>
+      <span class="txt">
+        <strong>원격 진단 (Diagnostics)</strong>
+        <small>Cloud 요청 → HPC 수집 → 리포트 회신</small>
+      </span>
+    </button>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <label for="speed">재생 속도</label>
+      <input type="range" id="speed" min="0.3" max="3" step="0.1" value="1" />
+      <span id="speed-val">1.0x</span>
+    </div>
+
+    <div class="row toggles">
+      <label><input type="checkbox" id="autoloop" /> 자동 반복</label>
+      <label><input type="checkbox" id="labels" checked /> 패킷 라벨</label>
+    </div>
+
+    <button id="stop-btn" class="ghost-btn">■ 정지 / 초기화</button>
+
+    <div class="divider"></div>
+    <h3>범례</h3>
+    <ul class="legend">
+      <li><span class="dot type-update"></span> 펌웨어 / 업데이트</li>
+      <li><span class="dot type-event"></span> 이벤트 / 충돌 데이터</li>
+      <li><span class="dot type-telemetry"></span> 텔레메트리 / 센서</li>
+      <li><span class="dot type-control"></span> 제어 / 명령</li>
+      <li><span class="dot type-ack"></span> ACK / 확인</li>
+    </ul>
+  </aside>
+
+  <!-- 중앙: 토폴로지 -->
+  <section class="panel stage">
+    <svg id="topology" viewBox="0 0 900 620" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="cloudGlow" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- 링크/노드/패킷은 JS에서 렌더링 -->
+      <g id="links"></g>
+      <g id="packets"></g>
+      <g id="nodes"></g>
+    </svg>
+  </section>
+
+  <!-- 우측: 로그 + 지표 -->
+  <aside class="panel monitor">
+    <h2>실시간 지표</h2>
+    <div class="metrics">
+      <div class="metric">
+        <span class="m-val" id="m-packets">0</span>
+        <span class="m-label">전송 패킷</span>
+      </div>
+      <div class="metric">
+        <span class="m-val" id="m-throughput">0</span>
+        <span class="m-label">MB 전송</span>
+      </div>
+      <div class="metric">
+        <span class="m-val" id="m-latency">—</span>
+        <span class="m-label">평균 지연 ms</span>
+      </div>
+      <div class="metric">
+        <span class="m-val ok" id="m-status">대기</span>
+        <span class="m-label">상태</span>
+      </div>
+    </div>
+
+    <h2>이벤트 로그</h2>
+    <div id="log" class="log"></div>
+  </aside>
+</main>
+
+<script>
+/* =========================================================================
+ * SDV 데이터 흐름 대시보드 — 애니메이션 엔진
+ * 백엔드 없이 SVG + requestAnimationFrame 으로 동작합니다.
+ * ====================================================================== */
+
+(() => {
+  "use strict";
+
+  // ---- 토폴로지 정의 (viewBox 900 x 620 기준 좌표) -------------------------
+  const NODES = {
+    cloud: { x: 450, y: 60,  w: 220, h: 64, cls: "node-cloud", icon: "☁",
+             title: "Cloud", sub: "OTA 서버 · 데이터 레이크" },
+    hpc:   { x: 450, y: 230, w: 200, h: 64, cls: "node-hpc", icon: "🧠",
+             title: "HPC", sub: "중앙 고성능 컴퓨터" },
+    zFront:{ x: 230, y: 400, w: 150, h: 56, cls: "node-zonal", icon: "▣",
+             title: "Zonal — Front", sub: "전방 존 컨트롤러" },
+    zRear: { x: 670, y: 400, w: 150, h: 56, cls: "node-zonal", icon: "▣",
+             title: "Zonal — Rear", sub: "후방 존 컨트롤러" },
+    eCam:  { x: 110, y: 545, w: 130, h: 50, cls: "node-edge", icon: "📷",
+             title: "Camera / LiDAR", sub: "Edge ECU" },
+    eBrake:{ x: 320, y: 545, w: 130, h: 50, cls: "node-edge", icon: "🛞",
+             title: "Brake / ADAS", sub: "Edge ECU" },
+    eAirbag:{x: 580, y: 545, w: 130, h: 50, cls: "node-edge", icon: "🎈",
+             title: "Airbag / IMU", sub: "Edge ECU" },
+    eBody: { x: 790, y: 545, w: 130, h: 50, cls: "node-edge", icon: "🔧",
+             title: "Body / Comfort", sub: "Edge ECU" },
+  };
+
+  // 노드 간 물리 링크 (양방향)
+  const LINKS = [
+    ["cloud", "hpc"],
+    ["hpc", "zFront"],
+    ["hpc", "zRear"],
+    ["zFront", "eCam"],
+    ["zFront", "eBrake"],
+    ["zRear", "eAirbag"],
+    ["zRear", "eBody"],
+  ];
+
+  // ---- 시나리오 정의 -------------------------------------------------------
+  // 각 step: { from, to, type, label, size(MB), delay(ms) }
+  // path 는 from→to 의 노드 경로(중간 홉 포함)
+  const SCENARIOS = {
+    ota: {
+      name: "OTA 소프트웨어 업데이트",
+      status: "업데이트 배포 중",
+      steps: [
+        { path: ["cloud","hpc"], type: "update", label: "FW v2.4.1", size: 320, delay: 0 },
+        { path: ["cloud","hpc"], type: "update", label: "서명/검증", size: 0.2, delay: 700 },
+        { path: ["hpc","zFront"], type: "update", label: "Front 패키지", size: 120, delay: 1500 },
+        { path: ["hpc","zRear"],  type: "update", label: "Rear 패키지",  size: 110, delay: 1700 },
+        { path: ["zFront","eCam"],   type: "update", label: "Cam FW",   size: 45, delay: 2600 },
+        { path: ["zFront","eBrake"], type: "update", label: "ADAS FW",  size: 60, delay: 2800 },
+        { path: ["zRear","eAirbag"], type: "update", label: "IMU FW",   size: 30, delay: 2900 },
+        { path: ["zRear","eBody"],   type: "update", label: "Body FW",  size: 25, delay: 3100 },
+        { path: ["eCam","zFront"],   type: "ack", label: "OK", size: 0.1, delay: 4200 },
+        { path: ["eBrake","zFront"], type: "ack", label: "OK", size: 0.1, delay: 4300 },
+        { path: ["eAirbag","zRear"], type: "ack", label: "OK", size: 0.1, delay: 4400 },
+        { path: ["eBody","zRear"],   type: "ack", label: "OK", size: 0.1, delay: 4500 },
+        { path: ["zFront","hpc"], type: "ack", label: "Zone OK", size: 0.2, delay: 5000 },
+        { path: ["zRear","hpc"],  type: "ack", label: "Zone OK", size: 0.2, delay: 5100 },
+        { path: ["hpc","cloud"],  type: "ack", label: "배포 완료", size: 0.5, delay: 5700 },
+      ],
+    },
+
+    crash: {
+      name: "충돌 이벤트 (Crash)",
+      status: "⚠ 긴급 이벤트 처리",
+      steps: [
+        { path: ["eAirbag","zRear"], type: "event", label: "충격 감지!", size: 2, delay: 0 },
+        { path: ["eCam","zFront"],   type: "event", label: "영상 버퍼", size: 48, delay: 150 },
+        { path: ["eBrake","zFront"], type: "event", label: "제동 로그", size: 12, delay: 200 },
+        { path: ["zRear","hpc"],  type: "event", label: "Crash 신호", size: 5, delay: 600 },
+        { path: ["zFront","hpc"], type: "event", label: "센서 융합", size: 60, delay: 750 },
+        { path: ["hpc","zFront"], type: "control", label: "비상정지", size: 0.3, delay: 1100 },
+        { path: ["hpc","zRear"],  type: "control", label: "에어백 점화", size: 0.3, delay: 1100 },
+        { path: ["zRear","eAirbag"], type: "control", label: "Deploy", size: 0.2, delay: 1500 },
+        { path: ["zFront","eBrake"], type: "control", label: "Brake", size: 0.2, delay: 1500 },
+        { path: ["hpc","cloud"], type: "event", label: "eCall 긴급호출", size: 8, delay: 2000 },
+        { path: ["hpc","cloud"], type: "event", label: "이벤트 패키지 업로드", size: 140, delay: 2400 },
+        { path: ["cloud","hpc"], type: "ack", label: "관제센터 접수", size: 0.4, delay: 4200 },
+      ],
+    },
+
+    telemetry: {
+      name: "정상 주행 텔레메트리",
+      status: "텔레메트리 수집 중",
+      steps: [
+        { path: ["eCam","zFront"],   type: "telemetry", label: "차선/객체", size: 8, delay: 0 },
+        { path: ["eBrake","zFront"], type: "telemetry", label: "휠속/제동", size: 3, delay: 200 },
+        { path: ["eAirbag","zRear"], type: "telemetry", label: "IMU 6축", size: 2, delay: 300 },
+        { path: ["eBody","zRear"],   type: "telemetry", label: "공조/도어", size: 1, delay: 400 },
+        { path: ["zFront","hpc"], type: "telemetry", label: "Front 집계", size: 6, delay: 900 },
+        { path: ["zRear","hpc"],  type: "telemetry", label: "Rear 집계", size: 4, delay: 1000 },
+        { path: ["hpc","cloud"], type: "telemetry", label: "주행 데이터 동기화", size: 18, delay: 1600 },
+        { path: ["cloud","hpc"], type: "ack", label: "수신 확인", size: 0.1, delay: 2400 },
+      ],
+    },
+
+    diagnostics: {
+      name: "원격 진단 (Diagnostics)",
+      status: "원격 진단 수행 중",
+      steps: [
+        { path: ["cloud","hpc"], type: "control", label: "진단 요청", size: 0.5, delay: 0 },
+        { path: ["hpc","zFront"], type: "control", label: "DTC 조회", size: 0.3, delay: 500 },
+        { path: ["hpc","zRear"],  type: "control", label: "DTC 조회", size: 0.3, delay: 600 },
+        { path: ["zFront","eCam"],   type: "control", label: "self-test", size: 0.2, delay: 1000 },
+        { path: ["zFront","eBrake"], type: "control", label: "self-test", size: 0.2, delay: 1050 },
+        { path: ["zRear","eAirbag"], type: "control", label: "self-test", size: 0.2, delay: 1100 },
+        { path: ["zRear","eBody"],   type: "control", label: "self-test", size: 0.2, delay: 1150 },
+        { path: ["eCam","zFront"],   type: "telemetry", label: "DTC: OK", size: 1, delay: 1700 },
+        { path: ["eBrake","zFront"], type: "telemetry", label: "DTC: P0420", size: 1, delay: 1750 },
+        { path: ["eAirbag","zRear"], type: "telemetry", label: "DTC: OK", size: 1, delay: 1800 },
+        { path: ["eBody","zRear"],   type: "telemetry", label: "DTC: OK", size: 1, delay: 1850 },
+        { path: ["zFront","hpc"], type: "telemetry", label: "Front 리포트", size: 3, delay: 2400 },
+        { path: ["zRear","hpc"],  type: "telemetry", label: "Rear 리포트", size: 3, delay: 2500 },
+        { path: ["hpc","cloud"], type: "telemetry", label: "진단 리포트", size: 6, delay: 3100 },
+      ],
+    },
+  };
+
+  const TYPE_COLOR = {
+    update: "#22d3ee", event: "#f43f5e", telemetry: "#a3e635",
+    control: "#f59e0b", ack: "#94a3b8",
+  };
+
+  // ---- DOM ----------------------------------------------------------------
+  const svgNS = "http://www.w3.org/2000/svg";
+  const gLinks = document.getElementById("links");
+  const gNodes = document.getElementById("nodes");
+  const gPackets = document.getElementById("packets");
+  const logEl = document.getElementById("log");
+  const clockEl = document.getElementById("sim-clock");
+  const speedInput = document.getElementById("speed");
+  const speedVal = document.getElementById("speed-val");
+  const autoloop = document.getElementById("autoloop");
+  const labelsToggle = document.getElementById("labels");
+
+  const linkEls = new Map();   // "a|b" -> path element
+  const nodeEls = new Map();   // id -> group element
+
+  // ---- 상태 ---------------------------------------------------------------
+  let speed = 1;
+  let running = false;
+  let queue = [];              // 예약된 step 들
+  let packets = [];            // 활동 중 패킷
+  let metrics = { packets: 0, mb: 0, latencies: [] };
+  let simTime = 0;
+  let lastTs = 0;
+  let currentScenario = null;
+
+  // ---- 좌표 헬퍼 ----------------------------------------------------------
+  function center(id) {
+    const n = NODES[id];
+    return { x: n.x, y: n.y };
+  }
+  function linkKey(a, b) {
+    return [a, b].sort().join("|");
+  }
+  // 노드 박스 경계에서 만나도록 가장자리 지점 계산
+  function edgePoint(fromId, toId) {
+    const a = NODES[fromId], b = NODES[toId];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const ang = Math.atan2(dy, dx);
+    const hw = a.w / 2, hh = a.h / 2;
+    // 박스 경계까지의 거리
+    const tx = Math.abs(Math.cos(ang)) < 1e-6 ? Infinity : hw / Math.abs(Math.cos(ang));
+    const ty = Math.abs(Math.sin(ang)) < 1e-6 ? Infinity : hh / Math.abs(Math.sin(ang));
+    const t = Math.min(tx, ty);
+    return { x: a.x + Math.cos(ang) * t, y: a.y + Math.sin(ang) * t };
+  }
+
+  // ---- 렌더링: 링크 & 노드 ------------------------------------------------
+  function renderTopology() {
+    LINKS.forEach(([a, b]) => {
+      const p1 = edgePoint(a, b), p2 = edgePoint(b, a);
+      const path = document.createElementNS(svgNS, "line");
+      path.setAttribute("x1", p1.x); path.setAttribute("y1", p1.y);
+      path.setAttribute("x2", p2.x); path.setAttribute("y2", p2.y);
+      path.setAttribute("class", "link");
+      gLinks.appendChild(path);
+      linkEls.set(linkKey(a, b), path);
+    });
+
+    for (const [id, n] of Object.entries(NODES)) {
+      const g = document.createElementNS(svgNS, "g");
+      g.setAttribute("class", `node ${n.cls}`);
+      g.style.color = strokeOf(n.cls);
+
+      const rect = document.createElementNS(svgNS, "rect");
+      rect.setAttribute("x", n.x - n.w / 2);
+      rect.setAttribute("y", n.y - n.h / 2);
+      rect.setAttribute("width", n.w);
+      rect.setAttribute("height", n.h);
+      rect.setAttribute("rx", 12);
+      rect.setAttribute("class", "node-box");
+      g.appendChild(rect);
+
+      const icon = document.createElementNS(svgNS, "text");
+      icon.setAttribute("x", n.x - n.w / 2 + 22);
+      icon.setAttribute("y", n.y + 6);
+      icon.setAttribute("class", "node-icon");
+      icon.textContent = n.icon;
+      g.appendChild(icon);
+
+      const title = document.createElementNS(svgNS, "text");
+      title.setAttribute("x", n.x + 12);
+      title.setAttribute("y", n.y - 2);
+      title.setAttribute("class", "node-title");
+      title.textContent = n.title;
+      g.appendChild(title);
+
+      const sub = document.createElementNS(svgNS, "text");
+      sub.setAttribute("x", n.x + 12);
+      sub.setAttribute("y", n.y + 14);
+      sub.setAttribute("class", "node-sub");
+      sub.textContent = n.sub;
+      g.appendChild(sub);
+
+      gNodes.appendChild(g);
+      nodeEls.set(id, g);
+    }
+  }
+
+  function strokeOf(cls) {
+    return { "node-cloud": "#3b82f6", "node-hpc": "#8b5cf6",
+             "node-zonal": "#10b981", "node-edge": "#64748b" }[cls] || "#888";
+  }
+
+  // ---- 시나리오 실행 ------------------------------------------------------
+  function startScenario(key) {
+    reset(false);
+    const sc = SCENARIOS[key];
+    if (!sc) return;
+    currentScenario = key;
+    running = true;
+    setStatus(sc.status, "running");
+    logLine("system", `▶ 시나리오 시작: ${sc.name}`);
+    highlightButton(key);
+
+    // step 들을 시뮬레이션 시간 기준으로 큐에 등록
+    queue = sc.steps.map(s => ({ ...s, fireAt: s.delay }));
+    if (!lastTs) { lastTs = performance.now(); requestAnimationFrame(loop); }
+  }
+
+  function spawnPacket(step) {
+    const path = step.path;
+    // 다중 홉 경로를 세그먼트별로 펼침
+    const segments = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
+      const p1 = edgePoint(a, b), p2 = edgePoint(b, a);
+      const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      segments.push({ a, b, p1, p2, len });
+    }
+    const totalLen = segments.reduce((s, x) => s + x.len, 0);
+    // 패킷 속도: 화면상 픽셀/초 (속도 슬라이더 반영)
+    const pxPerSec = 260;
+
+    const packet = {
+      step, segments, totalLen, dist: 0, pxPerSec,
+      bornSim: simTime,
+      color: TYPE_COLOR[step.type],
+      el: null, labelEl: null,
+    };
+
+    // SVG 요소
+    const c = document.createElementNS(svgNS, "circle");
+    c.setAttribute("r", sizeToRadius(step.size));
+    c.setAttribute("fill", packet.color);
+    c.setAttribute("filter", "url(#soft)");
+    c.style.color = packet.color;
+    gPackets.appendChild(c);
+    packet.el = c;
+
+    if (labelsToggle.checked && step.label) {
+      const t = document.createElementNS(svgNS, "text");
+      t.setAttribute("class", "packet-label");
+      t.textContent = step.label;
+      gPackets.appendChild(t);
+      packet.labelEl = t;
+    }
+
+    packets.push(packet);
+    metrics.packets++;
+    metrics.mb += step.size;
+    updateMetrics();
+    pulseNode(path[0]);
+
+    logLine(step.type,
+      `${NODES[path[0]].title.split(" ")[0]} → ${NODES[path[path.length-1]].title.split(" ")[0]} · ${step.label} (${fmtSize(step.size)})`);
+  }
+
+  function sizeToRadius(mb) {
+    return Math.max(3.5, Math.min(9, 3.5 + Math.log10(mb + 1) * 3));
+  }
+
+  // ---- 메인 루프 ----------------------------------------------------------
+  function loop(ts) {
+    const dtReal = (ts - lastTs) / 1000;
+    lastTs = ts;
+    const dt = dtReal * speed;
+    simTime += dt;
+    clockEl.textContent = fmtClock(simTime);
+
+    // 큐에서 발사 시점 도달한 step 처리
+    const fireMs = simTime * 1000;
+    queue = queue.filter(step => {
+      if (fireMs >= step.fireAt) { spawnPacket(step); return false; }
+      return true;
+    });
+
+    // 패킷 이동
+    const stillActive = [];
+    for (const p of packets) {
+      p.dist += p.pxPerSec * dt;
+      const pos = positionAlong(p);
+      if (pos.done) {
+        // 도착: 지연 기록, 도착 노드 펄스
+        const last = p.segments[p.segments.length - 1].b;
+        pulseNode(last);
+        const latency = (simTime - p.bornSim) * 1000;
+        metrics.latencies.push(latency);
+        cleanupPacket(p);
+        updateMetrics();
+      } else {
+        p.el.setAttribute("cx", pos.x);
+        p.el.setAttribute("cy", pos.y);
+        if (p.labelEl) {
+          p.labelEl.setAttribute("x", pos.x);
+          p.labelEl.setAttribute("y", pos.y - 12);
+        }
+        highlightLink(pos.segKey, true);
+        stillActive.push(p);
+      }
+    }
+    // 링크 하이라이트 리셋 (활성 세그먼트만 유지)
+    const activeSegs = new Set(stillActive.map(p => positionAlong(p).segKey));
+    for (const [key, el] of linkEls) {
+      el.classList.toggle("hot", activeSegs.has(key));
+    }
+    packets = stillActive;
+
+    // 종료 판정
+    if (running && queue.length === 0 && packets.length === 0) {
+      finishScenario();
+    }
+
+    if (running || packets.length > 0) {
+      requestAnimationFrame(loop);
+    } else {
+      lastTs = 0;
+    }
+  }
+
+  function positionAlong(p) {
+    let d = p.dist;
+    for (const seg of p.segments) {
+      if (d <= seg.len) {
+        const t = seg.len === 0 ? 1 : d / seg.len;
+        return {
+          x: seg.p1.x + (seg.p2.x - seg.p1.x) * t,
+          y: seg.p1.y + (seg.p2.y - seg.p1.y) * t,
+          segKey: linkKey(seg.a, seg.b), done: false,
+        };
+      }
+      d -= seg.len;
+    }
+    return { done: true };
+  }
+
+  function cleanupPacket(p) {
+    p.el.remove();
+    if (p.labelEl) p.labelEl.remove();
+  }
+
+  function highlightLink(key, on) {
+    const el = linkEls.get(key);
+    if (el) el.classList.toggle("hot", on);
+  }
+
+  function pulseNode(id) {
+    const el = nodeEls.get(id);
+    if (!el) return;
+    el.classList.add("pulsing");
+    clearTimeout(el._pt);
+    el._pt = setTimeout(() => el.classList.remove("pulsing"), 1100);
+  }
+
+  function finishScenario() {
+    running = false;
+    setStatus("완료 ✓", "ok");
+    logLine("system", `■ 시나리오 종료: ${SCENARIOS[currentScenario]?.name || ""}`);
+    highlightButton(null);
+    for (const [, el] of linkEls) el.classList.remove("hot");
+
+    if (autoloop.checked && currentScenario) {
+      const key = currentScenario;
+      setTimeout(() => { if (autoloop.checked) startScenario(key); }, 1200);
+    }
+  }
+
+  // ---- 지표 / 로그 --------------------------------------------------------
+  function updateMetrics() {
+    document.getElementById("m-packets").textContent = metrics.packets;
+    document.getElementById("m-throughput").textContent = metrics.mb.toFixed(1);
+    const lat = metrics.latencies;
+    document.getElementById("m-latency").textContent =
+      lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : "—";
+  }
+
+  function setStatus(text, kind) {
+    const el = document.getElementById("m-status");
+    el.textContent = text;
+    el.className = "m-val" + (kind === "ok" ? " ok" : "");
+    el.style.color = kind === "running" ? "#f59e0b" : (kind === "ok" ? "" : "");
+  }
+
+  function logLine(type, msg) {
+    const div = document.createElement("div");
+    div.className = `log-entry ${type}`;
+    div.innerHTML = `<span class="t">${fmtClock(simTime)}</span>${msg}`;
+    logEl.prepend(div);
+    while (logEl.children.length > 60) logEl.lastChild.remove();
+  }
+
+  function highlightButton(key) {
+    document.querySelectorAll(".scenario-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.scenario === key);
+    });
+  }
+
+  // ---- 포맷 ---------------------------------------------------------------
+  function fmtClock(sec) {
+    const m = Math.floor(sec / 60);
+    const s = (sec % 60);
+    return `${String(m).padStart(2, "0")}:${s.toFixed(1).padStart(4, "0")}`;
+  }
+  function fmtSize(mb) {
+    if (mb < 1) return `${Math.round(mb * 1024)} KB`;
+    return `${mb} MB`;
+  }
+
+  // ---- 리셋 ---------------------------------------------------------------
+  function reset(full = true) {
+    running = false;
+    queue = [];
+    packets.forEach(cleanupPacket);
+    packets = [];
+    for (const [, el] of linkEls) el.classList.remove("hot");
+    for (const [, el] of nodeEls) el.classList.remove("pulsing");
+    highlightButton(null);
+    if (full) {
+      metrics = { packets: 0, mb: 0, latencies: [] };
+      simTime = 0; lastTs = 0;
+      updateMetrics();
+      clockEl.textContent = fmtClock(0);
+      setStatus("대기", "ok");
+      logEl.innerHTML = "";
+      logLine("system", "대시보드 초기화됨 — 시나리오를 선택하세요.");
+    }
+  }
+
+  // ---- 이벤트 바인딩 ------------------------------------------------------
+  document.querySelectorAll(".scenario-btn").forEach(btn => {
+    btn.addEventListener("click", () => startScenario(btn.dataset.scenario));
+  });
+  document.getElementById("stop-btn").addEventListener("click", () => reset(true));
+  speedInput.addEventListener("input", () => {
+    speed = parseFloat(speedInput.value);
+    speedVal.textContent = speed.toFixed(1) + "x";
+  });
+
+  // ---- 초기화 -------------------------------------------------------------
+  renderTopology();
+  reset(true);
+})();
+
+</script>
+</body>
+</html>
